@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Message = {
   id: number;
@@ -34,7 +36,7 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
   if (sender === "user") {
     return (
       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-md">
-        U
+        C
       </div>
     );
   }
@@ -89,20 +91,44 @@ export default function App() {
 
       const data = await res.json();
 
+      const fullText = data.response;
+
+      setIsTyping(false); // ✅ stop indicator BEFORE animation
+
+      let currentText = "";
+      const botMessageId = Date.now();
+
+      // Add empty bot message
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now(),
-          text: data.response,
+          id: botMessageId,
+          text: "",
           sender: "bot",
           timestamp: new Date(),
         },
       ]);
+
+      let i = 0;
+
+      const interval = setInterval(() => {
+        currentText += fullText[i];
+
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMessageId ? { ...msg, text: currentText } : msg,
+          ),
+        );
+
+        i++;
+
+        if (i >= fullText.length) {
+          clearInterval(interval);
+        }
+      }, 10); // speed (lower = faster)
     } catch (error) {
       console.error(error);
     }
-
-    setIsTyping(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -136,7 +162,7 @@ export default function App() {
             </svg>
           </div>
           <span className="font-semibold text-white tracking-tight">
-            NeuralChat
+            ChucksGPT
           </span>
         </div>
 
@@ -179,13 +205,13 @@ export default function App() {
         <div className="px-4 py-4 border-t border-white/5">
           <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-sm font-bold">
-              U
+              C
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium text-white truncate">
-                My Account
+                Clark N.
               </p>
-              <p className="text-xs text-gray-500">Free Plan</p>
+              <p className="text-xs text-gray-500">Premium Plan</p>
             </div>
           </div>
         </div>
@@ -215,12 +241,12 @@ export default function App() {
             </svg>
           </button>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">NeuralChat</span>
+          {/* <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-white">ChucksGPT</span>
             <span className="text-xs bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
               Online
             </span>
-          </div>
+          </div> */}
 
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -255,10 +281,10 @@ export default function App() {
               <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
                 How can I help you today?
               </h1>
-              <p className="text-gray-500 text-sm mb-10 max-w-xs">
+              {/* <p className="text-gray-500 text-sm mb-10 max-w-xs">
                 Ask me anything — I'm here to assist, explain, and explore with
                 you.
-              </p>
+              </p> */}
 
               {/* Suggestion pills */}
               <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
@@ -294,7 +320,9 @@ export default function App() {
                         }
                       `}
                     >
-                      {msg.text}
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msg.text}
+                      </ReactMarkdown>
                     </div>
                     <span className="text-xs text-gray-600 px-1">
                       {formatTime(msg.timestamp)}
