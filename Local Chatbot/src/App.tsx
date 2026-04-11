@@ -63,12 +63,12 @@ export default function App() {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const sendMessage = (text?: string) => {
+  const sendMessage = async (text?: string) => {
     const messageText = text || input;
     if (!messageText.trim() || isTyping) return;
 
     const userMessage: Message = {
-      id: ++messageIdCounter,
+      id: Date.now(),
       text: messageText,
       sender: "user",
       timestamp: new Date(),
@@ -78,27 +78,31 @@ export default function App() {
     setInput("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      const botReplies = [
-        "That's a fascinating question! Let me think about that for a moment... 🤔",
-        "Great point! Here's what I think about that topic.",
-        "Interesting! I can help you explore that idea further.",
-        "I love that question. Here's my perspective on it.",
-        "Of course! Here's a thoughtful response just for you. 🌟",
-      ];
-      const reply = botReplies[Math.floor(Math.random() * botReplies.length)];
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/chat/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: messageText }),
+      });
 
-      setIsTyping(false);
+      const data = await res.json();
+
       setMessages((prev) => [
         ...prev,
         {
-          id: ++messageIdCounter,
-          text: reply,
+          id: Date.now(),
+          text: data.response,
           sender: "bot",
           timestamp: new Date(),
         },
       ]);
-    }, 1200 + Math.random() * 800);
+    } catch (error) {
+      console.error(error);
+    }
+
+    setIsTyping(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -115,7 +119,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#0d0d0d] text-white font-sans overflow-hidden">
-
       {/* ── Sidebar ── */}
       <aside
         className={`
@@ -132,7 +135,9 @@ export default function App() {
               <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M9 9a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1m6 0a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z" />
             </svg>
           </div>
-          <span className="font-semibold text-white tracking-tight">NeuralChat</span>
+          <span className="font-semibold text-white tracking-tight">
+            NeuralChat
+          </span>
         </div>
 
         {/* New Chat button */}
@@ -141,7 +146,10 @@ export default function App() {
             onClick={() => setMessages([])}
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors group"
           >
-            <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none stroke-2">
+            <svg
+              viewBox="0 0 24 24"
+              className="w-4 h-4 stroke-current fill-none stroke-2"
+            >
               <path d="M12 5v14M5 12h14" strokeLinecap="round" />
             </svg>
             New Chat
@@ -150,8 +158,14 @@ export default function App() {
 
         {/* Recent chats placeholder */}
         <div className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
-          <p className="px-3 py-1 text-xs text-gray-600 uppercase tracking-widest font-medium">Recent</p>
-          {["Quantum computing basics", "Creative poem ideas", "Business strategies"].map((title, i) => (
+          <p className="px-3 py-1 text-xs text-gray-600 uppercase tracking-widest font-medium">
+            Recent
+          </p>
+          {[
+            "Quantum computing basics",
+            "Creative poem ideas",
+            "Business strategies",
+          ].map((title, i) => (
             <button
               key={i}
               className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-colors truncate"
@@ -168,7 +182,9 @@ export default function App() {
               U
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-white truncate">My Account</p>
+              <p className="text-sm font-medium text-white truncate">
+                My Account
+              </p>
               <p className="text-xs text-gray-500">Free Plan</p>
             </div>
           </div>
@@ -185,14 +201,16 @@ export default function App() {
 
       {/* ── Main Area ── */}
       <div className="flex flex-col flex-1 min-w-0">
-
         {/* Top bar */}
         <header className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-[#0d0d0d]/80 backdrop-blur-md shrink-0">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="md:hidden p-1.5 rounded-lg hover:bg-white/5 transition-colors"
           >
-            <svg viewBox="0 0 24 24" className="w-5 h-5 stroke-current fill-none stroke-2">
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5 stroke-current fill-none stroke-2"
+            >
               <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
             </svg>
           </button>
@@ -210,8 +228,15 @@ export default function App() {
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-gray-300 transition-colors"
               title="Clear chat"
             >
-              <svg viewBox="0 0 24 24" className="w-4 h-4 stroke-current fill-none stroke-2">
-                <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" strokeLinecap="round" strokeLinejoin="round" />
+              <svg
+                viewBox="0 0 24 24"
+                className="w-4 h-4 stroke-current fill-none stroke-2"
+              >
+                <path
+                  d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </button>
           </div>
@@ -231,7 +256,8 @@ export default function App() {
                 How can I help you today?
               </h1>
               <p className="text-gray-500 text-sm mb-10 max-w-xs">
-                Ask me anything — I'm here to assist, explain, and explore with you.
+                Ask me anything — I'm here to assist, explain, and explore with
+                you.
               </p>
 
               {/* Suggestion pills */}
@@ -255,13 +281,16 @@ export default function App() {
                   className={`flex gap-3 ${msg.sender === "user" ? "flex-row-reverse" : "flex-row"}`}
                 >
                   <Avatar sender={msg.sender} />
-                  <div className={`flex flex-col gap-1 max-w-[78%] ${msg.sender === "user" ? "items-end" : "items-start"}`}>
+                  <div
+                    className={`flex flex-col gap-1 max-w-[78%] ${msg.sender === "user" ? "items-end" : "items-start"}`}
+                  >
                     <div
                       className={`
                         px-4 py-3 rounded-2xl text-sm leading-relaxed
-                        ${msg.sender === "user"
-                          ? "bg-indigo-600 text-white rounded-tr-sm shadow-lg shadow-indigo-900/20"
-                          : "bg-[#1a1a1a] text-gray-100 border border-white/5 rounded-tl-sm"
+                        ${
+                          msg.sender === "user"
+                            ? "bg-indigo-600 text-white rounded-tr-sm shadow-lg shadow-indigo-900/20"
+                            : "bg-[#1a1a1a] text-gray-100 border border-white/5 rounded-tl-sm"
                         }
                       `}
                     >
@@ -299,7 +328,8 @@ export default function App() {
                 onChange={(e) => {
                   setInput(e.target.value);
                   e.target.style.height = "auto";
-                  e.target.style.height = Math.min(e.target.scrollHeight, 144) + "px";
+                  e.target.style.height =
+                    Math.min(e.target.scrollHeight, 144) + "px";
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="Message NeuralChat…"
@@ -310,19 +340,35 @@ export default function App() {
                 disabled={!input.trim() || isTyping}
                 className={`
                   shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150
-                  ${input.trim() && !isTyping
-                    ? "bg-white text-black hover:bg-gray-200 shadow-sm"
-                    : "bg-white/10 text-gray-600 cursor-not-allowed"
+                  ${
+                    input.trim() && !isTyping
+                      ? "bg-white text-black hover:bg-gray-200 shadow-sm"
+                      : "bg-white/10 text-gray-600 cursor-not-allowed"
                   }
                 `}
               >
-                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-none stroke-current stroke-2">
-                  <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  viewBox="0 0 24 24"
+                  className="w-4 h-4 fill-none stroke-current stroke-2"
+                >
+                  <path
+                    d="M12 19V5M5 12l7-7 7 7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
             </div>
             <p className="text-center text-xs text-gray-700 mt-2">
-              Press <kbd className="bg-white/5 px-1.5 py-0.5 rounded text-gray-500 text-[10px] font-mono">Enter</kbd> to send · <kbd className="bg-white/5 px-1.5 py-0.5 rounded text-gray-500 text-[10px] font-mono">Shift+Enter</kbd> for newline
+              Press{" "}
+              <kbd className="bg-white/5 px-1.5 py-0.5 rounded text-gray-500 text-[10px] font-mono">
+                Enter
+              </kbd>{" "}
+              to send ·{" "}
+              <kbd className="bg-white/5 px-1.5 py-0.5 rounded text-gray-500 text-[10px] font-mono">
+                Shift+Enter
+              </kbd>{" "}
+              for newline
             </p>
           </div>
         </footer>
