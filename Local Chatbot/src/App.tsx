@@ -16,7 +16,7 @@ const SUGGESTIONS = [
   "🎨 Describe a surreal painting",
 ];
 
-let messageIdCounter = 0;
+// let messageIdCounter = 0;
 
 function TypingIndicator() {
   return (
@@ -360,7 +360,7 @@ export default function App() {
                     Math.min(e.target.scrollHeight, 144) + "px";
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Message NeuralChat…"
+                placeholder="Message ChucksGPT…"
                 disabled={isTyping}
               />
               <button
