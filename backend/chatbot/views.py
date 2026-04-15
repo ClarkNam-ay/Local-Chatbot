@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 from .models import Conversation, Message
 
+# View to handle chat interactions----------------------------------------------------------------
 @csrf_exempt
 def chat(request):
     if request.method == "POST":
@@ -15,7 +16,7 @@ def chat(request):
         if conversation_id:
             conversation = Conversation.objects.get(id=conversation_id)
 
-            # 🔥 Update title if empty
+            # Update title if empty
             if not conversation.title:
                 conversation.title = user_message[:30]
                 conversation.save()
@@ -29,12 +30,24 @@ def chat(request):
             sender="user"
         )
 
+        # Build conversation context (AI Memory)
+        messages = Message.objects.filter(conversation=conversation).order_by('-timestamp')[:10]
+        messages = reversed(messages)
+
+        context = ""
+
+        for m in messages:
+            role = "User" if m.sender == "user" else "Assistant"
+            context += f"{role}: {m.text}\n"
+
+        context += f"User: {user_message}\nAssistant:"
+
         # Call Ollama
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={
                 "model": "clark-assistant",
-                "prompt": user_message,
+                "prompt": context,
                 "stream": False
             }
         )
@@ -68,7 +81,7 @@ def get_conversations(request):
 
     return JsonResponse(data, safe=False)
 
-
+# View to fetch messages for a conversation-----------------------------------------------------
 def get_messages(request, conversation_id):
     messages = Message.objects.filter(conversation_id=conversation_id)
 
@@ -82,4 +95,26 @@ def get_messages(request, conversation_id):
     ]
 
     return JsonResponse(data, safe=False)
+
+# Views to rename and delete conversations-----------------------------------------------------
+@csrf_exempt
+def rename_conversation(request, id):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        new_title = data.get("title")
+
+        conversation = Conversation.objects.get(id=id)
+        conversation.title = new_title
+        conversation.save()
+
+        return JsonResponse({"success": True})
+
+
+@csrf_exempt
+def delete_conversation(request, id):
+    if request.method == "DELETE":
+        conversation = Conversation.objects.get(id=id)
+        conversation.delete()
+
+        return JsonResponse({"success": True})
     

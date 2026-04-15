@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import logo from "./assets/ChucksGPTnoText.png";
 
 type Message = {
   id: number;
@@ -15,8 +16,6 @@ const SUGGESTIONS = [
   "💡 Give me a business idea",
   "🎨 Describe a surreal painting",
 ];
-
-// let messageIdCounter = 0;
 
 function TypingIndicator() {
   return (
@@ -48,8 +47,11 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
     </div>
   );
 }
+
 // const function ----------------------------------------------------------------------------------------------
 export default function App() {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [conversations, setConversations] = useState<any[]>([]);
@@ -68,6 +70,26 @@ export default function App() {
 
   useEffect(() => {
     fetchConversations();
+  }, []);
+
+  useEffect(() => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  }, [messages]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const sendMessage = async (text?: string) => {
@@ -98,6 +120,7 @@ export default function App() {
       });
 
       const data = await res.json();
+
       // save conversation id -------------------------------------------------------------------------------
       setConversationId(data.conversation_id);
       fetchConversations();
@@ -134,7 +157,7 @@ export default function App() {
         if (i >= fullText.length) {
           clearInterval(interval);
         }
-      }, 10); // speed (lower = faster)
+      }, 10);
     } catch (error) {
       console.error(error);
     }
@@ -158,7 +181,7 @@ export default function App() {
 
     const formatted = data.map((msg: any) => ({
       ...msg,
-      id: Date.now() + Math.random(), // unique id
+      id: Date.now() + Math.random(),
       timestamp: new Date(msg.timestamp),
     }));
 
@@ -166,14 +189,47 @@ export default function App() {
     setConversationId(id);
   };
 
-  setTimeout(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, 100);
-
   const fetchConversations = () => {
     fetch("/api/conversations/")
       .then((res) => res.json())
       .then((data) => setConversations(data));
+  };
+
+  // Delete and Rename handlers ---------------------------------------------------------------------------------
+  const handleRename = async (id: number) => {
+    const newTitle = prompt("Enter new title:");
+
+    if (!newTitle) return;
+
+    await fetch(`/api/conversation/${id}/rename/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: newTitle }),
+    });
+
+    fetchConversations();
+    setMenuOpenId(null);
+  };
+
+  const handleDelete = async (id: number) => {
+    const confirmDelete = confirm("Delete this conversation?");
+
+    if (!confirmDelete) return;
+
+    await fetch(`/api/conversation/${id}/delete/`, {
+      method: "DELETE",
+    });
+
+    fetchConversations();
+
+    if (conversationId === id) {
+      setMessages([]);
+      setConversationId(null);
+    }
+
+    setMenuOpenId(null);
   };
 
   // UI---------------------------------------------------------------------------------
@@ -190,11 +246,7 @@ export default function App() {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-900/30">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
-              <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M9 9a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1m6 0a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z" />
-            </svg>
-          </div>
+          <img src={logo} alt="ChucksGPT Logo" className="w-10 h-10" />
           <span className="font-semibold text-white tracking-tight">
             ChucksGPT
           </span>
@@ -225,15 +277,58 @@ export default function App() {
             Recent
           </p>
           {conversations.map((conv) => (
-            <button
+            <div
               key={conv.id}
-              onClick={() => loadMessages(conv.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg text-sm
-  ${conversationId === conv.id ? "bg-white/10 text-white" : "text-gray-400 hover:bg-white/5"}
-`}
+              className={`group relative flex items-center justify-between px-3 py-2 rounded-lg transition
+                ${
+                  conversationId === conv.id
+                    ? "bg-white/10 text-white"
+                    : "hover:bg-white/5"
+                }
+              `}
             >
-              {conv.title}
-            </button>
+              {/* Conversation title */}
+              <button
+                onClick={() => loadMessages(conv.id)}
+                className="flex-1 text-left text-sm text-gray-400 group-hover:text-white truncate"
+              >
+                {conv.title}
+              </button>
+
+              {/* 3 dots (hidden until hover) */}
+              <button
+                onClick={() =>
+                  setMenuOpenId(menuOpenId === conv.id ? null : conv.id)
+                }
+                className="opacity-0 group-hover:opacity-100 transition duration-150 text-gray-500 hover:text-white px-1"
+              >
+                ⋮
+              </button>
+
+              {/* Dropdown menu */}
+              {menuOpenId === conv.id && (
+                <div
+                  ref={menuRef}
+                  className="absolute right-2 top-10 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-lg z-50 w-32 transition-all duration-150 opacity-100 scale-100"
+                >
+                  {/* Rename */}
+                  <button
+                    onClick={() => handleRename(conv.id)}
+                    className="block w-full text-left px-3 py-2 text-sm hover:bg-white/10"
+                  >
+                    Rename
+                  </button>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDelete(conv.id)}
+                    className="block w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-white/10"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
 
@@ -312,11 +407,7 @@ export default function App() {
           {isEmpty ? (
             /* Empty state / welcome screen */
             <div className="flex flex-col items-center justify-center h-full px-4 py-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center mb-6 shadow-xl shadow-emerald-900/30">
-                <svg viewBox="0 0 24 24" className="w-8 h-8 fill-white">
-                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M9 9a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1m6 0a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z" />
-                </svg>
-              </div>
+              <img src={logo} alt="ChucksGPT Logo" className="w-20 h-20" />
               <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
                 How can I help you today, Sir Clark?
               </h1>
