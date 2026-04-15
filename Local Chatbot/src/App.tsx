@@ -48,15 +48,16 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
     </div>
   );
 }
-
+// const function ----------------------------------------------------------------------------------------------
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -64,6 +65,10 @@ export default function App() {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
 
   const sendMessage = async (text?: string) => {
     const messageText = text || input;
@@ -86,19 +91,23 @@ export default function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: messageText }),
+        body: JSON.stringify({
+          message: messageText,
+          conversation_id: conversationId,
+        }),
       });
 
       const data = await res.json();
-
+      // save conversation id -------------------------------------------------------------------------------
+      setConversationId(data.conversation_id);
+      fetchConversations();
       const fullText = data.response;
 
-      setIsTyping(false); // ✅ stop indicator BEFORE animation
+      setIsTyping(false);
 
       let currentText = "";
       const botMessageId = Date.now();
 
-      // Add empty bot message
       setMessages((prev) => [
         ...prev,
         {
@@ -143,6 +152,31 @@ export default function App() {
 
   const isEmpty = messages.length === 0;
 
+  const loadMessages = async (id: number) => {
+    const res = await fetch(`/api/messages/${id}/`);
+    const data = await res.json();
+
+    const formatted = data.map((msg: any) => ({
+      ...msg,
+      id: Date.now() + Math.random(), // unique id
+      timestamp: new Date(msg.timestamp),
+    }));
+
+    setMessages(formatted);
+    setConversationId(id);
+  };
+
+  setTimeout(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, 100);
+
+  const fetchConversations = () => {
+    fetch("/api/conversations/")
+      .then((res) => res.json())
+      .then((data) => setConversations(data));
+  };
+
+  // UI---------------------------------------------------------------------------------
   return (
     <div className="flex h-screen bg-[#0d0d0d] text-white font-sans overflow-hidden">
       {/* ── Sidebar ── */}
@@ -169,7 +203,10 @@ export default function App() {
         {/* New Chat button */}
         <div className="px-3 py-3">
           <button
-            onClick={() => setMessages([])}
+            onClick={() => {
+              setMessages([]);
+              setConversationId(null);
+            }}
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors group"
           >
             <svg
@@ -187,16 +224,15 @@ export default function App() {
           <p className="px-3 py-1 text-xs text-gray-600 uppercase tracking-widest font-medium">
             Recent
           </p>
-          {[
-            "Quantum computing basics",
-            "Creative poem ideas",
-            "Business strategies",
-          ].map((title, i) => (
+          {conversations.map((conv) => (
             <button
-              key={i}
-              className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-colors truncate"
+              key={conv.id}
+              onClick={() => loadMessages(conv.id)}
+              className={`w-full text-left px-3 py-2.5 rounded-lg text-sm
+  ${conversationId === conv.id ? "bg-white/10 text-white" : "text-gray-400 hover:bg-white/5"}
+`}
             >
-              {title}
+              {conv.title}
             </button>
           ))}
         </div>
@@ -250,7 +286,10 @@ export default function App() {
 
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => setMessages([])}
+              onClick={() => {
+                setMessages([]);
+                setConversationId(null);
+              }}
               className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-gray-300 transition-colors"
               title="Clear chat"
             >
@@ -279,7 +318,7 @@ export default function App() {
                 </svg>
               </div>
               <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
-                How can I help you today?
+                How can I help you today, Sir Clark?
               </h1>
               {/* <p className="text-gray-500 text-sm mb-10 max-w-xs">
                 Ask me anything — I'm here to assist, explain, and explore with
