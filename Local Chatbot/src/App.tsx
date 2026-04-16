@@ -397,12 +397,12 @@ export default function App() {
                   ChucksGPT Ultra
                 </button>
 
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10 text-gray-500 cursor-not-allowed">
                   <Cpu className="w-4 h-4 text-purple-400" />
                   Code Assistant
                 </button>
 
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10 text-gray-500 cursor-not-allowed">
                   <Cpu className="w-4 h-4 text-yellow-400" />
                   Instructor Mode
                 </button>
