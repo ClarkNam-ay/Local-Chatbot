@@ -2,7 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import logo from "./assets/ChucksGPTnoText.png";
-import { Pencil, Trash, SquarePen } from "lucide-react";
+import {
+  Pencil,
+  Trash,
+  SquarePen,
+  Cpu,
+  ChevronDown,
+  Sparkles,
+  Lock,
+} from "lucide-react";
 
 type Message = {
   id: number;
@@ -51,6 +59,7 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
 
 // const function ----------------------------------------------------------------------------------------------
 export default function App() {
+  const [modelOpenId, setModelOpenId] = useState<number | null>(null);
   const [renameModalId, setRenameModalId] = useState<number | null>(null);
   const [deleteModalId, setDeleteModalId] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState("");
@@ -333,53 +342,78 @@ export default function App() {
       {/* ── Main Area ── */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Top bar */}
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-[#0d0d0d]/80 backdrop-blur-md shrink-0">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="w-5 h-5 stroke-current fill-none stroke-2"
-            >
-              <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
-            </svg>
-          </button>
-
-          {/* <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">ChucksGPT</span>
-            <span className="text-xs bg-emerald-500/15 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20 font-medium">
-              Online
-            </span>
-          </div> */}
-
-          <div className="ml-auto flex items-center gap-2">
+        <header className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-[#0d0d0d]/80 backdrop-blur-md shrink-0 overflow-visible">
+          {/* LEFT SIDE */}
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                setMessages([]);
-                setConversationId(null);
-              }}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-gray-300 transition-colors"
-              title="Clear chat"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="md:hidden p-1.5 rounded-lg hover:bg-white/5 transition-colors"
             >
               <svg
                 viewBox="0 0 24 24"
-                className="w-4 h-4 stroke-current fill-none stroke-2"
+                className="w-5 h-5 stroke-current fill-none stroke-2"
               >
-                <path
-                  d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
               </svg>
             </button>
+            {/* Available para sa mga new feature */}
+            <span className="text-sm font-medium text-white"> </span>
+          </div>
+
+          {/* RIGHT SIDE */}
+          <div className="relative px-3 py-2">
+            {/* Trigger */}
+            <button
+              onClick={() => setModelOpenId(modelOpenId ? null : 1)}
+              className="w-full flex items-center justify-between text-sm text-gray-300 hover:text-white"
+            >
+              <div className="flex items-center gap-3">
+                <Cpu className="w-4 h-4" />
+                <span>ChucksGPT 1.0</span>
+              </div>
+
+              <ChevronDown
+                className={`w-4 h-4 transition ${
+                  modelOpenId ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {/* Dropdown */}
+            {modelOpenId && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-[#0f0f0f]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-[999] transition-all duration-150">
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  ChucksGPT 1.0
+                </button>
+
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                  <Cpu className="w-4 h-4 text-blue-400" />
+                  ChucksGPT Pro
+                </button>
+
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 cursor-not-allowed">
+                  <Lock className="w-4 h-4" />
+                  ChucksGPT Ultra
+                </button>
+
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                  <Cpu className="w-4 h-4 text-purple-400" />
+                  Code Assistant
+                </button>
+
+                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
+                  <Cpu className="w-4 h-4 text-yellow-400" />
+                  Instructor Mode
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
         {/* ── Messages ── */}
         <main className="flex-1 overflow-y-auto">
           {isEmpty ? (
-            /* Empty state / welcome screen */
             <div className="flex flex-col items-center justify-center h-full px-4 py-12 text-center">
               <img src={logo} alt="ChucksGPT Logo" className="w-20 h-20" />
               <h1 className="text-2xl font-semibold text-white mb-2 tracking-tight">
