@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import logo from "./assets/ChucksGPTnoText.png";
+import { Pencil, Trash, SquarePen } from "lucide-react";
 
 type Message = {
   id: number;
@@ -40,16 +41,19 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
     );
   }
   return (
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-sm shrink-0 shadow-md">
-      <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
-        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M9 9a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1m6 0a1 1 0 0 0-1 1v1a1 1 0 0 0 2 0v-1a1 1 0 0 0-1-1Z" />
-      </svg>
-    </div>
+    <img
+      src={logo}
+      alt="ChucksGPT"
+      className="w-8 h-8 rounded-full object-cover shadow-md"
+    />
   );
 }
 
 // const function ----------------------------------------------------------------------------------------------
 export default function App() {
+  const [renameModalId, setRenameModalId] = useState<number | null>(null);
+  const [deleteModalId, setDeleteModalId] = useState<number | null>(null);
+  const [newTitle, setNewTitle] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -195,43 +199,6 @@ export default function App() {
       .then((data) => setConversations(data));
   };
 
-  // Delete and Rename handlers ---------------------------------------------------------------------------------
-  const handleRename = async (id: number) => {
-    const newTitle = prompt("Enter new title:");
-
-    if (!newTitle) return;
-
-    await fetch(`/api/conversation/${id}/rename/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ title: newTitle }),
-    });
-
-    fetchConversations();
-    setMenuOpenId(null);
-  };
-
-  const handleDelete = async (id: number) => {
-    const confirmDelete = confirm("Delete this conversation?");
-
-    if (!confirmDelete) return;
-
-    await fetch(`/api/conversation/${id}/delete/`, {
-      method: "DELETE",
-    });
-
-    fetchConversations();
-
-    if (conversationId === id) {
-      setMessages([]);
-      setConversationId(null);
-    }
-
-    setMenuOpenId(null);
-  };
-
   // UI---------------------------------------------------------------------------------
   return (
     <div className="flex h-screen bg-[#0d0d0d] text-white font-sans overflow-hidden">
@@ -261,13 +228,9 @@ export default function App() {
             }}
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors group"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="w-4 h-4 stroke-current fill-none stroke-2"
-            >
-              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-            </svg>
-            New Chat
+            <div className="flex items-center gap-2">
+              {<SquarePen className="w-4 h-4" />} New Chat
+            </div>
           </button>
         </div>
 
@@ -313,18 +276,29 @@ export default function App() {
                 >
                   {/* Rename */}
                   <button
-                    onClick={() => handleRename(conv.id)}
+                    onClick={() => {
+                      setRenameModalId(conv.id);
+                      setNewTitle(conv.title);
+                      setMenuOpenId(null);
+                    }}
                     className="block w-full text-left px-3 py-2 text-sm hover:bg-white/10"
                   >
-                    Rename
+                    <div className="flex items-center gap-2">
+                      {<Pencil className="w-4 h-4" />} Rename
+                    </div>
                   </button>
 
                   {/* Delete */}
                   <button
-                    onClick={() => handleDelete(conv.id)}
+                    onClick={() => {
+                      setDeleteModalId(conv.id);
+                      setMenuOpenId(null);
+                    }}
                     className="block w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-white/10"
                   >
-                    Delete
+                    <div className="flex items-center gap-2">
+                      {<Trash className="w-5 h-5" />} Delete
+                    </div>
                   </button>
                 </div>
               )}
@@ -438,15 +412,15 @@ export default function App() {
                 >
                   <Avatar sender={msg.sender} />
                   <div
-                    className={`flex flex-col gap-1 max-w-[78%] ${msg.sender === "user" ? "items-end" : "items-start"}`}
+                    className={`flex flex-col gap-1 max-w-[80%] ${msg.sender === "user" ? "items-end" : "items-start"}`}
                   >
                     <div
                       className={`
-                        px-4 py-3 rounded-2xl text-sm leading-relaxed
+                        px-4 py-2 text-sm leading-relaxed
                         ${
                           msg.sender === "user"
-                            ? "bg-indigo-600 text-white rounded-tr-sm shadow-lg shadow-indigo-900/20"
-                            : "bg-[#1a1a1a] text-gray-100 border border-white/5 rounded-tl-sm"
+                            ? "bg-white/10 text-white rounded-2xl rounded-tr-sm"
+                            : "text-gray-300"
                         }
                       `}
                     >
@@ -455,7 +429,7 @@ export default function App() {
                       </ReactMarkdown>
                     </div>
                     <span className="text-xs text-gray-600 px-1">
-                      {formatTime(msg.timestamp)}
+                      {/* {formatTime(msg.timestamp)} */}
                     </span>
                   </div>
                 </div>
@@ -464,9 +438,7 @@ export default function App() {
               {isTyping && (
                 <div className="flex gap-3 flex-row">
                   <Avatar sender="bot" />
-                  <div className="px-4 py-2 rounded-2xl rounded-tl-sm bg-[#1a1a1a] border border-white/5">
-                    <TypingIndicator />
-                  </div>
+                  <TypingIndicator />
                 </div>
               )}
               <div ref={messagesEndRef} />
@@ -531,6 +503,93 @@ export default function App() {
           </div>
         </footer>
       </div>
+      {/* Rename Modal */}
+      {renameModalId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-[#1a1a1a] p-5 rounded-xl w-80 border border-white/10 shadow-xl">
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              {<Pencil className="w-5 h-5" />}
+              Rename Chat
+            </h2>
+
+            <input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white outline-none mb-4"
+              placeholder="Enter new title"
+            />
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setRenameModalId(null)}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  await fetch(`/api/conversation/${renameModalId}/rename/`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: newTitle }),
+                  });
+
+                  fetchConversations();
+                  setRenameModalId(null);
+                }}
+                className="px-3 py-1.5 text-sm bg-emerald-500 hover:bg-emerald-400 rounded-lg text-black font-medium"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete Modal */}
+      {deleteModalId && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fadeIn">
+          <div className="bg-[#1a1a1a] p-5 rounded-xl w-80 border border-white/10 shadow-xl">
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2 text-red-400">
+              {<Trash className="w-5 h-5" />}
+              Delete Chat
+            </h2>
+
+            <p className="text-sm text-gray-400 mb-4">
+              Are you sure you want to delete this conversation?
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteModalId(null)}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={async () => {
+                  await fetch(`/api/conversation/${deleteModalId}/delete/`, {
+                    method: "DELETE",
+                  });
+
+                  fetchConversations();
+
+                  if (conversationId === deleteModalId) {
+                    setMessages([]);
+                    setConversationId(null);
+                  }
+
+                  setDeleteModalId(null);
+                }}
+                className="px-3 py-1.5 text-sm bg-red-500 hover:bg-red-400 rounded-lg text-white font-medium"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

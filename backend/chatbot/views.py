@@ -31,7 +31,7 @@ def chat(request):
         )
 
         # Build conversation context (AI Memory)
-        messages = Message.objects.filter(conversation=conversation).order_by('-timestamp')[:10]
+        messages = Message.objects.filter(conversation=conversation).order_by('-timestamp')[:40]
         messages = reversed(messages)
 
         context = ""
