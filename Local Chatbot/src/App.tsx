@@ -678,8 +678,8 @@ export default function App() {
                   await apiRequest<{ success: boolean }>(
                     `/conversation/${renameModalId}/rename/`,
                     {
-                    method: "POST",
-                    body: JSON.stringify({ title: newTitle }),
+                      method: "POST",
+                      body: JSON.stringify({ title: newTitle }),
                     },
                   );
 
