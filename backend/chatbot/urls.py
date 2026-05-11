@@ -1,7 +1,16 @@
 from django.urls import path
-from .views import chat, get_conversations, get_messages, rename_conversation, delete_conversation
+
+from .views import (
+    chat,
+    csrf,
+    delete_conversation,
+    get_conversations,
+    get_messages,
+    rename_conversation,
+)
 
 urlpatterns = [
+    path('csrf/', csrf),
     path('chat/', chat),
     path('conversations/', get_conversations),
     path('messages/<int:conversation_id>/', get_messages),

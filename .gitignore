@@ -1,0 +1,29 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+Local Chatbot/.env
+Local Chatbot/.env.*
+!Local Chatbot/.env.example
+
+# Local databases and generated Python files
+backend/db.sqlite3
+backend/**/*.sqlite3
+**/__pycache__/
+*.py[cod]
+
+# Frontend generated files
+Local Chatbot/node_modules/
+Local Chatbot/dist/
+Local Chatbot/dist-ssr/
+Local Chatbot/*.local
+
+# Logs and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

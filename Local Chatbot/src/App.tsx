@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import logo from "./assets/ChucksGPTnoText.png";
@@ -19,12 +19,112 @@ type Message = {
   timestamp: Date;
 };
 
+type Conversation = {
+  id: number;
+  title: string;
+};
+
+type ApiMessage = {
+  text: string;
+  sender: "user" | "bot";
+  timestamp: string;
+};
+
+type ChatResponse = {
+  response: string;
+  conversation_id: number;
+};
+
 const SUGGESTIONS = [
   "✨ Write me a short poem",
   "🧠 Explain quantum computing",
   "💡 Give me a business idea",
   "🎨 Describe a surreal painting",
 ];
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+  /\/+$/,
+  "",
+);
+const API_TOKEN = (import.meta.env.VITE_BACKEND_API_TOKEN || "").trim();
+const CSRF_COOKIE_NAME = "csrftoken";
+
+let csrfReady: Promise<void> | null = null;
+
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function getCookie(name: string) {
+  return document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${name}=`))
+    ?.split("=")[1];
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function authHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers);
+  if (API_TOKEN) {
+    nextHeaders.set("X-Chatbot-Token", API_TOKEN);
+  }
+  return nextHeaders;
+}
+
+async function ensureCsrfToken() {
+  if (!csrfReady) {
+    csrfReady = fetch(apiUrl("/csrf/"), {
+      credentials: "include",
+      headers: authHeaders(),
+    }).then((response) => {
+      if (!response.ok) {
+        throw new Error("Could not prepare a secure request.");
+      }
+    });
+  }
+
+  return csrfReady;
+}
+
+async function apiRequest<T>(path: string, options: RequestInit = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const isUnsafeMethod = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const headers = authHeaders(options.headers);
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (isUnsafeMethod) {
+    await ensureCsrfToken();
+    const csrfToken = getCookie(CSRF_COOKIE_NAME);
+    if (csrfToken) {
+      headers.set("X-CSRFToken", csrfToken);
+    }
+  }
+
+  const response = await fetch(apiUrl(path), {
+    ...options,
+    method,
+    headers,
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload.error === "string"
+        ? payload.error
+        : "The chatbot request failed.";
+    throw new Error(message);
+  }
+
+  return payload as T;
+}
 
 function TypingIndicator() {
   return (
@@ -67,9 +167,10 @@ export default function App() {
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -77,13 +178,22 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const fetchConversations = useCallback(async () => {
+    try {
+      const data = await apiRequest<Conversation[]>("/conversations/");
+      setConversations(data);
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Could not load conversations."));
+    }
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, isTyping]);
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
 
   useEffect(() => {
     setTimeout(() => {
@@ -119,25 +229,21 @@ export default function App() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
+    setErrorMessage("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/chat/", {
+      const data = await apiRequest<ChatResponse>("/chat/", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           message: messageText,
           conversation_id: conversationId,
         }),
       });
 
-      const data = await res.json();
-
       // save conversation id -------------------------------------------------------------------------------
       setConversationId(data.conversation_id);
       fetchConversations();
-      const fullText = data.response;
+      const fullText = data.response || "The model returned no message.";
 
       setIsTyping(false);
 
@@ -172,7 +278,8 @@ export default function App() {
         }
       }, 10);
     } catch (error) {
-      console.error(error);
+      setErrorMessage(getErrorMessage(error, "Could not send your message."));
+      setIsTyping(false);
     }
   };
 
@@ -189,23 +296,20 @@ export default function App() {
   const isEmpty = messages.length === 0;
 
   const loadMessages = async (id: number) => {
-    const res = await fetch(`/api/messages/${id}/`);
-    const data = await res.json();
+    try {
+      const data = await apiRequest<ApiMessage[]>(`/messages/${id}/`);
+      const formatted = data.map((msg) => ({
+        ...msg,
+        id: Date.now() + Math.random(),
+        timestamp: new Date(msg.timestamp),
+      }));
 
-    const formatted = data.map((msg: any) => ({
-      ...msg,
-      id: Date.now() + Math.random(),
-      timestamp: new Date(msg.timestamp),
-    }));
-
-    setMessages(formatted);
-    setConversationId(id);
-  };
-
-  const fetchConversations = () => {
-    fetch("/api/conversations/")
-      .then((res) => res.json())
-      .then((data) => setConversations(data));
+      setMessages(formatted);
+      setConversationId(id);
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error, "Could not load messages."));
+    }
   };
 
   // UI---------------------------------------------------------------------------------
@@ -463,7 +567,7 @@ export default function App() {
                       </ReactMarkdown>
                     </div>
                     <span className="text-xs text-gray-600 px-1">
-                      {/* {formatTime(msg.timestamp)} */}
+                      {formatTime(msg.timestamp)}
                     </span>
                   </div>
                 </div>
@@ -481,6 +585,14 @@ export default function App() {
         </main>
 
         {/* ── Input area ── */}
+        {errorMessage && (
+          <div className="px-4 pb-2">
+            <div className="max-w-2xl mx-auto rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {errorMessage}
+            </div>
+          </div>
+        )}
+
         <footer className="shrink-0 px-4 pb-5 pt-3">
           <div className="max-w-2xl mx-auto">
             <div className="relative flex items-end gap-2 bg-[#1a1a1a] border border-white/8 rounded-2xl px-4 py-3 focus-within:border-white/20 focus-within:bg-[#1f1f1f] transition-all duration-200 shadow-xl shadow-black/30">
@@ -563,11 +675,13 @@ export default function App() {
 
               <button
                 onClick={async () => {
-                  await fetch(`/api/conversation/${renameModalId}/rename/`, {
+                  await apiRequest<{ success: boolean }>(
+                    `/conversation/${renameModalId}/rename/`,
+                    {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ title: newTitle }),
-                  });
+                    },
+                  );
 
                   fetchConversations();
                   setRenameModalId(null);
@@ -603,9 +717,12 @@ export default function App() {
 
               <button
                 onClick={async () => {
-                  await fetch(`/api/conversation/${deleteModalId}/delete/`, {
-                    method: "DELETE",
-                  });
+                  await apiRequest<{ success: boolean }>(
+                    `/conversation/${deleteModalId}/delete/`,
+                    {
+                      method: "DELETE",
+                    },
+                  );
 
                   fetchConversations();
 
