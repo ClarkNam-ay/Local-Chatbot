@@ -187,9 +187,30 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
 )
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
 
+# Ollama and LLM Provider Config
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "clark-assistant")
 OLLAMA_TIMEOUT_SECONDS = float(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "60"))
+
+# Gemini 
+GEMINI_API_BASE_URL = os.environ.get(
+    "GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
+)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_TIMEOUT_SECONDS = float(os.environ.get("GEMINI_TIMEOUT_SECONDS", "60"))
+GROQ_CHAT_COMPLETIONS_URL = os.environ.get(
+    "GROQ_CHAT_COMPLETIONS_URL", "https://api.groq.com/openai/v1/chat/completions"
+)
+
+# Groq
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_TIMEOUT_SECONDS = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "60"))
+
+
+CHATBOT_DEFAULT_MODEL_ID = os.environ.get("CHATBOT_DEFAULT_MODEL_ID", "local")
+CHATBOT_ASSISTANT_NAME = os.environ.get("CHATBOT_ASSISTANT_NAME", "ChucksGPT")
 CHATBOT_MAX_MESSAGE_CHARS = int(os.environ.get("CHATBOT_MAX_MESSAGE_CHARS", "4000"))
 CHATBOT_API_TOKEN = os.environ.get("CHATBOT_API_TOKEN", "").strip()
 CHATBOT_REQUIRE_API_TOKEN = env_bool("CHATBOT_REQUIRE_API_TOKEN", True)

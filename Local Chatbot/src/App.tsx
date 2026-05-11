@@ -9,7 +9,7 @@ import {
   Cpu,
   ChevronDown,
   Sparkles,
-  Lock,
+  Check,
 } from "lucide-react";
 
 type Message = {
@@ -30,10 +30,45 @@ type ApiMessage = {
   timestamp: string;
 };
 
+const CHAT_MODEL_IDS = ["local", "gemini", "groq"] as const;
+type ChatModelId = (typeof CHAT_MODEL_IDS)[number];
+
 type ChatResponse = {
   response: string;
   conversation_id: number;
+  model_id: ChatModelId;
 };
+
+type ChatModelOption = {
+  id: ChatModelId;
+  label: string;
+  detail: string;
+  accentClass: string;
+};
+
+const DEFAULT_CHAT_MODEL_ID: ChatModelId = "local";
+const CHAT_MODEL_STORAGE_KEY = "chucksgpt.selectedModel";
+
+const CHAT_MODELS: ChatModelOption[] = [
+  {
+    id: "local",
+    label: "ChucksGPT Local",
+    detail: "Ollama clark-assistant",
+    accentClass: "text-emerald-400",
+  },
+  {
+    id: "gemini",
+    label: "ChucksGPT Gemini",
+    detail: "gemini-2.5-flash",
+    accentClass: "text-blue-400",
+  },
+  {
+    id: "groq",
+    label: "ChucksGPT Groq",
+    detail: "llama-3.3-70b-versatile",
+    accentClass: "text-amber-400",
+  },
+];
 
 const SUGGESTIONS = [
   "✨ Write me a short poem",
@@ -65,6 +100,15 @@ function getCookie(name: string) {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function isChatModelId(value: string | null): value is ChatModelId {
+  return CHAT_MODEL_IDS.includes(value as ChatModelId);
+}
+
+function getStoredModelId() {
+  const storedModelId = localStorage.getItem(CHAT_MODEL_STORAGE_KEY);
+  return isChatModelId(storedModelId) ? storedModelId : DEFAULT_CHAT_MODEL_ID;
 }
 
 function authHeaders(headers?: HeadersInit) {
@@ -159,11 +203,14 @@ function Avatar({ sender }: { sender: "user" | "bot" }) {
 
 // const function ----------------------------------------------------------------------------------------------
 export default function App() {
-  const [modelOpenId, setModelOpenId] = useState<number | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [selectedModelId, setSelectedModelId] =
+    useState<ChatModelId>(getStoredModelId);
   const [renameModalId, setRenameModalId] = useState<number | null>(null);
   const [deleteModalId, setDeleteModalId] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -203,8 +250,14 @@ export default function App() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setMenuOpenId(null);
+      }
+
+      if (modelMenuRef.current && !modelMenuRef.current.contains(target)) {
+        setModelMenuOpen(false);
       }
     };
 
@@ -237,6 +290,7 @@ export default function App() {
         body: JSON.stringify({
           message: messageText,
           conversation_id: conversationId,
+          model_id: selectedModelId,
         }),
       });
 
@@ -294,6 +348,14 @@ export default function App() {
     date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const isEmpty = messages.length === 0;
+  const selectedModel =
+    CHAT_MODELS.find((model) => model.id === selectedModelId) ?? CHAT_MODELS[0];
+
+  const handleModelSelect = (modelId: ChatModelId) => {
+    setSelectedModelId(modelId);
+    localStorage.setItem(CHAT_MODEL_STORAGE_KEY, modelId);
+    setModelMenuOpen(false);
+  };
 
   const loadMessages = async (id: number) => {
     try {
@@ -465,51 +527,57 @@ export default function App() {
           </div>
 
           {/* RIGHT SIDE */}
-          <div className="relative px-3 py-2">
+          <div ref={modelMenuRef} className="relative px-3 py-2">
             {/* Trigger */}
             <button
-              onClick={() => setModelOpenId(modelOpenId ? null : 1)}
-              className="w-full flex items-center justify-between text-sm text-gray-300 hover:text-white"
+              onClick={() => setModelMenuOpen((open) => !open)}
+              className="w-full flex items-center justify-between gap-3 text-sm text-gray-300 hover:text-white"
             >
               <div className="flex items-center gap-3">
                 <Cpu className="w-4 h-4" />
-                <span>ChucksGPT 1.0</span>
+                <span>{selectedModel.label}</span>
               </div>
 
               <ChevronDown
                 className={`w-4 h-4 transition ${
-                  modelOpenId ? "rotate-180" : ""
+                  modelMenuOpen ? "rotate-180" : ""
                 }`}
               />
             </button>
 
             {/* Dropdown */}
-            {modelOpenId && (
-              <div className="absolute right-0 top-full mt-2 w-56 bg-[#0f0f0f]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-[999] transition-all duration-150">
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
-                  <Sparkles className="w-4 h-4 text-emerald-400" />
-                  ChucksGPT 1.0
-                </button>
+            {modelMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-[#0f0f0f]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl z-[999] transition-all duration-150 overflow-hidden">
+                {CHAT_MODELS.map((model) => {
+                  const isSelected = model.id === selectedModelId;
 
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10">
-                  <Cpu className="w-4 h-4 text-blue-400" />
-                  ChucksGPT Pro
-                </button>
-
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-500 cursor-not-allowed">
-                  <Lock className="w-4 h-4" />
-                  ChucksGPT Ultra
-                </button>
-
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10 text-gray-500 cursor-not-allowed">
-                  <Cpu className="w-4 h-4 text-purple-400" />
-                  Code Assistant
-                </button>
-
-                <button className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/10 text-gray-500 cursor-not-allowed">
-                  <Cpu className="w-4 h-4 text-yellow-400" />
-                  Instructor Mode
-                </button>
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => handleModelSelect(model.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-3 text-left text-sm hover:bg-white/10 ${
+                        isSelected ? "bg-white/8 text-white" : "text-gray-300"
+                      }`}
+                    >
+                      {model.id === "local" ? (
+                        <Sparkles className={`w-4 h-4 ${model.accentClass}`} />
+                      ) : (
+                        <Cpu className={`w-4 h-4 ${model.accentClass}`} />
+                      )}
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-medium truncate">
+                          {model.label}
+                        </span>
+                        <span className="block text-xs text-gray-500 truncate">
+                          {model.detail}
+                        </span>
+                      </span>
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-emerald-400" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

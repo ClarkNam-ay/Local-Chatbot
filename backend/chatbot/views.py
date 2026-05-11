@@ -1,12 +1,12 @@
 import hmac
 import json
 
-import requests
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from .llm_providers import ProviderError, generate_chat_reply, resolve_chat_model_id
 from .models import Conversation, Message
 
 
@@ -77,6 +77,11 @@ def chat(request):
     if conversation_id is not None and not isinstance(conversation_id, int):
         return error_response("conversation_id must be a number.")
 
+    try:
+        model_id = resolve_chat_model_id(data.get("model_id"))
+    except ProviderError as error:
+        return error_response(error.message, status=error.status)
+
     if conversation_id:
         try:
             conversation = Conversation.objects.get(id=conversation_id)
@@ -94,37 +99,12 @@ def chat(request):
     recent_messages = Message.objects.filter(conversation=conversation).order_by(
         "-timestamp"
     )[:40]
-    ordered_messages = reversed(list(recent_messages))
-
-    context_lines = []
-    for message in ordered_messages:
-        role = "User" if message.sender == "user" else "Assistant"
-        context_lines.append(f"{role}: {message.text}")
-
-    context = "\n".join(context_lines) + "\nAssistant:"
+    ordered_messages = list(reversed(list(recent_messages)))
 
     try:
-        response = requests.post(
-            settings.OLLAMA_URL,
-            json={
-                "model": settings.OLLAMA_MODEL,
-                "prompt": context,
-                "stream": False,
-            },
-            timeout=settings.OLLAMA_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        result = response.json()
-    except requests.Timeout:
-        return error_response("The local model timed out.", status=504)
-    except requests.RequestException:
-        return error_response("The local model request failed.", status=502)
-    except ValueError:
-        return error_response("The local model returned invalid JSON.", status=502)
-
-    bot_reply = result.get("response")
-    if not isinstance(bot_reply, str) or not bot_reply.strip():
-        return error_response("The local model returned an empty response.", status=502)
+        bot_reply = generate_chat_reply(model_id, ordered_messages)
+    except ProviderError as error:
+        return error_response(error.message, status=error.status)
 
     Message.objects.create(conversation=conversation, text=bot_reply, sender="bot")
 
@@ -132,6 +112,7 @@ def chat(request):
         {
             "response": bot_reply,
             "conversation_id": conversation.id,
+            "model_id": model_id,
         }
     )
 
