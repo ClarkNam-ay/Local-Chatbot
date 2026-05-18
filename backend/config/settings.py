@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -221,6 +222,9 @@ CORS_ALLOWED_ORIGINS = env_list(
     ["http://127.0.0.1:5173", "http://localhost:5173"],
 )
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-chatbot-token",
+]
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIGINS)
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
