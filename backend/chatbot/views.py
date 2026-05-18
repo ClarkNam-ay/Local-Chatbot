@@ -1,8 +1,13 @@
+from functools import wraps
+import hashlib
 import hmac
 import json
+import time
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -15,6 +20,7 @@ def error_response(message, status=400):
 
 
 def require_api_token(view_func):
+    @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         if settings.CHATBOT_REQUIRE_API_TOKEN:
             provided_token = request.headers.get("X-Chatbot-Token", "")
@@ -24,6 +30,54 @@ def require_api_token(view_func):
         return view_func(request, *args, **kwargs)
 
     return wrapped
+
+
+def get_session_key(request):
+    if not request.session.session_key:
+        request.session.create()
+    return request.session.session_key
+
+
+def get_client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if settings.CHATBOT_TRUST_X_FORWARDED_FOR and forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.META.get("REMOTE_ADDR", "unknown")
+
+
+def enforce_chat_rate_limit(request):
+    limit = settings.CHATBOT_RATE_LIMIT_REQUESTS
+    window_seconds = settings.CHATBOT_RATE_LIMIT_WINDOW_SECONDS
+    if limit <= 0 or window_seconds <= 0:
+        return None
+
+    raw_identifier = f"{get_client_ip(request)}:{settings.SECRET_KEY}"
+    client_id = hashlib.sha256(raw_identifier.encode("utf-8")).hexdigest()
+    bucket = int(time.time() // window_seconds)
+    cache_key = f"chatbot:rate:{bucket}:{client_id}"
+
+    added = cache.add(cache_key, 1, timeout=window_seconds + 5)
+    try:
+        count = 1 if added else cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=window_seconds + 5)
+        count = 1
+
+    if count > limit:
+        return JsonResponse(
+            {"error": "Too many chat requests. Please wait and try again."},
+            status=429,
+            headers={"Retry-After": str(window_seconds)},
+        )
+
+    return None
+
+
+def get_owned_conversation(request, conversation_id):
+    return Conversation.objects.get(
+        id=conversation_id,
+        session_key=get_session_key(request),
+    )
 
 
 def parse_json_body(request):
@@ -57,12 +111,17 @@ def clean_text(value, field_name, max_length):
 @ensure_csrf_cookie
 @require_GET
 def csrf(request):
-    return JsonResponse({"success": True})
+    return JsonResponse({"success": True, "csrfToken": get_token(request)})
 
 
 @require_api_token
 @require_POST
 def chat(request):
+    session_key = get_session_key(request)
+    rate_limit_error = enforce_chat_rate_limit(request)
+    if rate_limit_error:
+        return rate_limit_error
+
     data, error = parse_json_body(request)
     if error:
         return error
@@ -82,9 +141,9 @@ def chat(request):
     except ProviderError as error:
         return error_response(error.message, status=error.status)
 
-    if conversation_id:
+    if conversation_id is not None:
         try:
-            conversation = Conversation.objects.get(id=conversation_id)
+            conversation = get_owned_conversation(request, conversation_id)
         except Conversation.DoesNotExist:
             return error_response("Conversation not found.", status=404)
 
@@ -92,7 +151,10 @@ def chat(request):
             conversation.title = user_message[:30]
             conversation.save(update_fields=["title"])
     else:
-        conversation = Conversation.objects.create(title=user_message[:30])
+        conversation = Conversation.objects.create(
+            title=user_message[:30],
+            session_key=session_key,
+        )
 
     Message.objects.create(conversation=conversation, text=user_message, sender="user")
 
@@ -120,7 +182,9 @@ def chat(request):
 @require_api_token
 @require_GET
 def get_conversations(request):
-    conversations = Conversation.objects.all().order_by("-created_at")
+    conversations = Conversation.objects.filter(
+        session_key=get_session_key(request),
+    ).order_by("-created_at")
 
     data = [
         {
@@ -136,12 +200,17 @@ def get_conversations(request):
 @require_api_token
 @require_GET
 def get_messages(request, conversation_id):
-    if not Conversation.objects.filter(id=conversation_id).exists():
+    session_key = get_session_key(request)
+    if not Conversation.objects.filter(
+        id=conversation_id,
+        session_key=session_key,
+    ).exists():
         return error_response("Conversation not found.", status=404)
 
-    messages = Message.objects.filter(conversation_id=conversation_id).order_by(
-        "timestamp"
-    )
+    messages = Message.objects.filter(
+        conversation_id=conversation_id,
+        conversation__session_key=session_key,
+    ).order_by("timestamp")
 
     data = [
         {
@@ -167,7 +236,7 @@ def rename_conversation(request, id):
         return error
 
     try:
-        conversation = Conversation.objects.get(id=id)
+        conversation = get_owned_conversation(request, id)
     except Conversation.DoesNotExist:
         return error_response("Conversation not found.", status=404)
 
@@ -181,7 +250,7 @@ def rename_conversation(request, id):
 @require_http_methods(["DELETE"])
 def delete_conversation(request, id):
     try:
-        conversation = Conversation.objects.get(id=id)
+        conversation = get_owned_conversation(request, id)
     except Conversation.DoesNotExist:
         return error_response("Conversation not found.", status=404)
 

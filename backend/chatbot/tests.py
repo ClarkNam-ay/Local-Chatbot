@@ -1,5 +1,7 @@
 from unittest.mock import Mock, patch
 
+from django.core.cache import cache
+from django.test import Client
 from django.test import TestCase, override_settings
 
 from .models import Conversation, Message
@@ -11,6 +13,9 @@ from .models import Conversation, Message
     CHATBOT_MAX_MESSAGE_CHARS=50,
     CHATBOT_DEFAULT_MODEL_ID="local",
     CHATBOT_ASSISTANT_NAME="ChucksGPT",
+    CHATBOT_RATE_LIMIT_REQUESTS=100,
+    CHATBOT_RATE_LIMIT_WINDOW_SECONDS=60,
+    CHATBOT_TRUST_X_FORWARDED_FOR=False,
     OLLAMA_MODEL="test-model",
     OLLAMA_TIMEOUT_SECONDS=1,
     OLLAMA_URL="http://ollama.test/api/generate",
@@ -18,6 +23,9 @@ from .models import Conversation, Message
     GROQ_API_KEY="",
 )
 class ChatbotApiSecurityTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
     def auth_headers(self):
         return {"HTTP_X_CHATBOT_TOKEN": "test-token"}
 
@@ -25,6 +33,12 @@ class ChatbotApiSecurityTests(TestCase):
         response = self.client.get("/api/conversations/")
 
         self.assertEqual(response.status_code, 401)
+
+    def test_csrf_endpoint_returns_header_token(self):
+        response = self.client.get("/api/csrf/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["csrfToken"])
 
     def test_chat_rejects_empty_message(self):
         response = self.client.post(
@@ -55,6 +69,7 @@ class ChatbotApiSecurityTests(TestCase):
         self.assertEqual(response.json()["response"], "Hello back")
         self.assertEqual(response.json()["model_id"], "local")
         self.assertEqual(Conversation.objects.count(), 1)
+        self.assertTrue(Conversation.objects.first().session_key)
         self.assertEqual(Message.objects.count(), 2)
         post_mock.assert_called_once()
         self.assertEqual(post_mock.call_args.kwargs["timeout"], 1)
@@ -161,6 +176,58 @@ class ChatbotApiSecurityTests(TestCase):
             "powered by Groq (groq-test)",
             payload["messages"][0]["content"],
         )
+
+    @patch("chatbot.llm_providers.requests.post")
+    def test_conversations_are_scoped_to_browser_session(self, post_mock):
+        ollama_response = Mock()
+        ollama_response.json.return_value = {"response": "Private reply"}
+        ollama_response.raise_for_status.return_value = None
+        post_mock.return_value = ollama_response
+
+        create_response = self.client.post(
+            "/api/chat/",
+            data={"message": "Keep this private"},
+            content_type="application/json",
+            **self.auth_headers(),
+        )
+        conversation_id = create_response.json()["conversation_id"]
+
+        other_client = Client()
+        messages_response = other_client.get(
+            f"/api/messages/{conversation_id}/",
+            **self.auth_headers(),
+        )
+        conversations_response = other_client.get(
+            "/api/conversations/",
+            **self.auth_headers(),
+        )
+
+        self.assertEqual(messages_response.status_code, 404)
+        self.assertEqual(conversations_response.json(), [])
+
+    @override_settings(CHATBOT_RATE_LIMIT_REQUESTS=1)
+    @patch("chatbot.llm_providers.requests.post")
+    def test_chat_rate_limit_blocks_excess_requests(self, post_mock):
+        ollama_response = Mock()
+        ollama_response.json.return_value = {"response": "Hello back"}
+        ollama_response.raise_for_status.return_value = None
+        post_mock.return_value = ollama_response
+
+        first_response = self.client.post(
+            "/api/chat/",
+            data={"message": "Hello"},
+            content_type="application/json",
+            **self.auth_headers(),
+        )
+        second_response = self.client.post(
+            "/api/chat/",
+            data={"message": "Again"},
+            content_type="application/json",
+            **self.auth_headers(),
+        )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 429)
 
     def test_delete_requires_existing_conversation(self):
         response = self.client.delete(

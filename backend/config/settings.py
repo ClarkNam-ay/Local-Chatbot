@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qsl, unquote, urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -47,6 +48,49 @@ def env_list(name, default):
     if not value:
         return default
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def env_int(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be an integer.") from exc
+
+
+def env_choice(name, default, choices):
+    value = os.environ.get(name, default).strip()
+    normalized_choices = {choice.lower(): choice for choice in choices}
+    selected = normalized_choices.get(value.lower())
+    if selected is None:
+        joined_choices = ", ".join(sorted(choices))
+        raise ImproperlyConfigured(f"{name} must be one of: {joined_choices}.")
+    return selected
+
+
+def database_from_url(database_url):
+    parsed = urlparse(database_url)
+    if parsed.scheme not in {"postgres", "postgresql"}:
+        raise ImproperlyConfigured(
+            "DATABASE_URL must start with postgres:// or postgresql:// for Neon."
+        )
+
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    database = {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": unquote(parsed.path.lstrip("/")),
+        "USER": unquote(parsed.username or ""),
+        "PASSWORD": unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or ""),
+        "OPTIONS": {},
+    }
+    if query.get("sslmode"):
+        database["OPTIONS"]["sslmode"] = query["sslmode"]
+
+    return database
 
 
 load_env_file(BASE_DIR / ".env")
@@ -114,12 +158,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+if DATABASE_URL:
+    default_database = database_from_url(DATABASE_URL)
+    default_database["CONN_MAX_AGE"] = env_int("DJANGO_DB_CONN_MAX_AGE", 600)
+    default_database["CONN_HEALTH_CHECKS"] = True
+    if env_bool("DJANGO_DATABASE_SSL_REQUIRE", not DEBUG):
+        default_database.setdefault("OPTIONS", {})["sslmode"] = "require"
+else:
+    default_database = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
-}
+
+DATABASES = {"default": default_database}
 
 
 # Password validation
@@ -156,7 +208,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -173,8 +226,12 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SAMESITE = env_choice(
+    "DJANGO_SESSION_COOKIE_SAMESITE", "Lax", {"Lax", "Strict", "None"}
+)
+CSRF_COOKIE_SAMESITE = env_choice(
+    "DJANGO_CSRF_COOKIE_SAMESITE", "Lax", {"Lax", "Strict", "None"}
+)
 CSRF_COOKIE_HTTPONLY = False
 X_FRAME_OPTIONS = "DENY"
 
@@ -186,6 +243,8 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
     "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False
 )
 SECURE_HSTS_PRELOAD = env_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+if env_bool("DJANGO_SECURE_PROXY_SSL_HEADER", not DEBUG):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Ollama and LLM Provider Config
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
@@ -211,9 +270,17 @@ GROQ_TIMEOUT_SECONDS = float(os.environ.get("GROQ_TIMEOUT_SECONDS", "60"))
 
 CHATBOT_DEFAULT_MODEL_ID = os.environ.get("CHATBOT_DEFAULT_MODEL_ID", "local")
 CHATBOT_ASSISTANT_NAME = os.environ.get("CHATBOT_ASSISTANT_NAME", "ChucksGPT")
-CHATBOT_MAX_MESSAGE_CHARS = int(os.environ.get("CHATBOT_MAX_MESSAGE_CHARS", "4000"))
+CHATBOT_MAX_MESSAGE_CHARS = env_int("CHATBOT_MAX_MESSAGE_CHARS", 4000)
 CHATBOT_API_TOKEN = os.environ.get("CHATBOT_API_TOKEN", "").strip()
 CHATBOT_REQUIRE_API_TOKEN = env_bool("CHATBOT_REQUIRE_API_TOKEN", True)
+CHATBOT_RATE_LIMIT_REQUESTS = env_int("CHATBOT_RATE_LIMIT_REQUESTS", 30)
+CHATBOT_RATE_LIMIT_WINDOW_SECONDS = env_int(
+    "CHATBOT_RATE_LIMIT_WINDOW_SECONDS", 60
+)
+CHATBOT_TRUST_X_FORWARDED_FOR = env_bool(
+    "CHATBOT_TRUST_X_FORWARDED_FOR", not DEBUG
+)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env_int("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", 262144)
 
 if CHATBOT_REQUIRE_API_TOKEN and not CHATBOT_API_TOKEN:
     raise ImproperlyConfigured(

@@ -3,6 +3,7 @@ from django.db import models
 # Create your models here.
 class Conversation(models.Model):
     title = models.CharField(max_length=255, blank=True)
+    session_key = models.CharField(max_length=40, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -46,6 +46,11 @@ type ChatModelOption = {
   accentClass: string;
 };
 
+type CsrfResponse = {
+  success: boolean;
+  csrfToken?: string;
+};
+
 const DEFAULT_CHAT_MODEL_ID: ChatModelId = "local";
 const CHAT_MODEL_STORAGE_KEY = "chucksgpt.selectedModel";
 
@@ -84,7 +89,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
 const API_TOKEN = (import.meta.env.VITE_BACKEND_API_TOKEN || "").trim();
 const CSRF_COOKIE_NAME = "csrftoken";
 
-let csrfReady: Promise<void> | null = null;
+let csrfReady: Promise<string | null> | null = null;
 
 function apiUrl(path: string) {
   return `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
@@ -124,10 +129,19 @@ async function ensureCsrfToken() {
     csrfReady = fetch(apiUrl("/csrf/"), {
       credentials: "include",
       headers: authHeaders(),
-    }).then((response) => {
+    }).then(async (response) => {
+      const payload = (await response.json().catch(() => null)) as
+        | CsrfResponse
+        | null;
       if (!response.ok) {
         throw new Error("Could not prepare a secure request.");
       }
+
+      if (payload && typeof payload.csrfToken === "string") {
+        return payload.csrfToken;
+      }
+
+      return getCookie(CSRF_COOKIE_NAME) ?? null;
     });
   }
 
@@ -144,8 +158,7 @@ async function apiRequest<T>(path: string, options: RequestInit = {}) {
   }
 
   if (isUnsafeMethod) {
-    await ensureCsrfToken();
-    const csrfToken = getCookie(CSRF_COOKIE_NAME);
+    const csrfToken = await ensureCsrfToken();
     if (csrfToken) {
       headers.set("X-CSRFToken", csrfToken);
     }
